@@ -1,5 +1,3 @@
-# require 'yaml'
-# require 'fileutils'
 require 'redis'
 
 module Turnout
@@ -54,25 +52,11 @@ module Turnout
     end
     alias :import_env_vars :import
 
-    # def allowed_paths
-    #   @allowed_paths #? Marshal.load(@allowed_paths) : @allowed_paths
-    # end
-    #
-    # def allowed_ips
-    #   @allowed_ips #? Marshal.load(@allowed_ips) : @allowed_ips
-    # end
-
     # Find the maintenance settings in Redis if exists
     def self.find
       settings_ = self.default
       return unless settings_.exists?
       settings_
-    end
-
-    def self.named(name)
-      # path = named_paths[name.to_sym]
-      # self.new(path) unless path.nil?
-      self.default
     end
 
     def self.default
@@ -126,10 +110,6 @@ module Turnout
       @response_code = code.to_i
     end
 
-    def dir_path
-      File.dirname(path)
-    end
-
     def import_settings
       import fetch_existing_settings || {}
     end
@@ -141,8 +121,5 @@ module Turnout
       end.to_h
     end
 
-    def self.named_paths
-      Turnout.config.named_maintenance_file_paths
-    end
   end
 end
