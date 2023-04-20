@@ -1,26 +1,30 @@
-require 'yaml'
-require 'fileutils'
+# require 'yaml'
+# require 'fileutils'
+require 'redis'
 
 module Turnout
   class MaintenanceFile
-    attr_reader :path
+    attr_reader :key
 
     SETTINGS = [:reason, :allowed_paths, :allowed_ips, :response_code, :retry_after]
+    MARSHALLED = [:allowed_paths, :allowed_ips]
     attr_reader(*SETTINGS)
 
-    def initialize(path)
-      @path = path
+    def initialize(key, redis_options: nil)
+      redis_options = default_redis_settings(redis_options)
+      @key = key
+      @client = redis_options ? Redis.new(redis_options) : Redis.current
       @reason = Turnout.config.default_reason
       @allowed_paths = Turnout.config.default_allowed_paths
       @allowed_ips = Turnout.config.default_allowed_ips
       @response_code = Turnout.config.default_response_code
       @retry_after = Turnout.config.default_retry_after
 
-      import_yaml if exists?
+      import_settings if exists?
     end
 
     def exists?
-      File.exist? path
+      @client.exists?(@key)
     end
 
     def to_h
@@ -29,22 +33,16 @@ module Turnout
       end
     end
 
-    def to_yaml(key_mapper = :to_s)
-      to_h.each_with_object({}) { |(key, val), hash|
-        hash[key.send(key_mapper)] = val
-      }.to_yaml
-    end
-
     def write
-      FileUtils.mkdir_p(dir_path) unless Dir.exist? dir_path
-
-      File.open(path, 'w') do |file|
-        file.write to_yaml
+      SETTINGS.each do |att|
+        value = send(att)
+        next unless value.present?
+        @client.hset(@key, att, serialize(value))
       end
     end
 
     def delete
-      File.delete(path) if exists?
+      @client.del(@key)
     end
 
     def import(hash)
@@ -56,22 +54,46 @@ module Turnout
     end
     alias :import_env_vars :import
 
-    # Find the first MaintenanceFile that exists
+    # def allowed_paths
+    #   @allowed_paths #? Marshal.load(@allowed_paths) : @allowed_paths
+    # end
+    #
+    # def allowed_ips
+    #   @allowed_ips #? Marshal.load(@allowed_ips) : @allowed_ips
+    # end
+
+    # Find the maintenance settings in Redis if exists
     def self.find
-      path = named_paths.values.find { |p| File.exist? p }
-      self.new(path) if path
+      settings_ = self.default
+      return unless settings_.exists?
+      settings_
     end
 
     def self.named(name)
-      path = named_paths[name.to_sym]
-      self.new(path) unless path.nil?
+      # path = named_paths[name.to_sym]
+      # self.new(path) unless path.nil?
+      self.default
     end
 
     def self.default
-      self.new(named_paths.values.first)
+      self.new(Turnout.config.default_redis_key)
     end
 
     private
+
+    def serialize(value)
+      [Array, Hash].include?(value.class) ? Marshal.dump(value) : value
+    end
+
+    def default_redis_settings(options)
+      return options if options&.fetch(:url){false} || options&.fetch(:host){false}
+      url = ENV['REDIS_PROVIDER'] || ENV['REDIS_URL'] || ENV['REDIS_SERVER']
+      if (url)
+        options ||= {}
+        options = options.merge(url: url)
+      end
+      options
+    end
 
     def retry_after=(value)
       @retry_after = value
@@ -108,8 +130,15 @@ module Turnout
       File.dirname(path)
     end
 
-    def import_yaml
-      import YAML::load(File.open(path)) || {}
+    def import_settings
+      import fetch_existing_settings || {}
+    end
+
+    def fetch_existing_settings
+      @client.hgetall(@key).map do |key, val|
+        val = MARSHALLED.include?(key.to_sym) ? Marshal.load(val) : val
+        [key, val]
+      end.to_h
     end
 
     def self.named_paths

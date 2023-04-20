@@ -3,6 +3,7 @@ module Turnout
   class Configuration
     SETTINGS = [
       :app_root,
+      :default_redis_key,
       :named_maintenance_file_paths,
       :maintenance_pages_path,
       :default_maintenance_page,
@@ -22,6 +23,7 @@ module Turnout
     def initialize
       @skip_middleware = false
       @app_root = '.'
+      @default_redis_key = 'turnout_maintenance_mode'
       @named_maintenance_file_paths = {default: app_root.join('tmp', 'maintenance.yml').to_s}
       @maintenance_pages_path = app_root.join('public').to_s
       @default_maintenance_page = Turnout::MaintenancePage::HTML
