@@ -71,7 +71,7 @@ module Turnout
 
     def default_redis_settings(options)
       return options if options&.fetch(:url){false} || options&.fetch(:host){false}
-      url = ENV['REDIS_PROVIDER'] || ENV['REDIS_URL'] || ENV['REDIS_SERVER']
+      url = ENV['APP_REDIS_URL'] || ENV['REDIS_PROVIDER'] || ENV['REDIS_URL'] || ENV['REDIS_SERVER']
       if (url)
         options ||= {}
         options = options.merge(url: url)
